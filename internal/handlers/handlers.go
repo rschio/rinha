@@ -64,7 +64,6 @@ func serveJSON[Req any, Resp any](
 
 	id, err := getID(r)
 	if err != nil {
-		// TODO: Return 404 or other error?
 		http.Error(w, "invalid id", http.StatusNotFound)
 		return
 	}

@@ -11,7 +11,7 @@ import (
 
 func TestTransactions(t *testing.T) {
 	server := httptest.NewServer(APIMux())
-	defer server.Close()
+	t.Cleanup(server.Close)
 
 	id := 1
 	path := server.URL + fmt.Sprintf("/clientes/%d/transacoes", id)
