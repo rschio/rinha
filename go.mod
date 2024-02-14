@@ -4,6 +4,7 @@ go 1.22.0
 
 require (
 	github.com/ardanlabs/darwin/v3 v3.3.1
+	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
 	github.com/jackc/pgx/v5 v5.5.3

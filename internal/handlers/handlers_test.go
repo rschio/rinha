@@ -7,14 +7,22 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/rschio/rinha/internal/core/client"
+	"github.com/rschio/rinha/internal/core/client/store/clientdb"
+	"github.com/rschio/rinha/internal/data/dbtest"
 )
 
 func TestTransactions(t *testing.T) {
-	server := httptest.NewServer(APIMux())
-	t.Cleanup(server.Close)
+	log, db, teardown := dbtest.NewUnit(t, dbtest.WithMigrations())
+	t.Cleanup(teardown)
+
+	server := NewServer(client.NewCore(clientdb.NewStore(log, db)))
+	httpServer := httptest.NewServer(APIMux(server))
+	t.Cleanup(httpServer.Close)
 
 	id := 1
-	path := server.URL + fmt.Sprintf("/clientes/%d/transacoes", id)
+	path := httpServer.URL + fmt.Sprintf("/clientes/%d/transacoes", id)
 	data := `{"valor":1000,"tipo":"c","descricao":"descricao"}`
 	contentType := "application/json"
 
@@ -50,13 +58,17 @@ func TestTransactionsID(t *testing.T) {
 		{"good id", "1", 200},
 	}
 
-	server := httptest.NewServer(APIMux())
-	t.Cleanup(server.Close)
+	log, db, teardown := dbtest.NewUnit(t, dbtest.WithMigrations())
+	t.Cleanup(teardown)
+
+	server := NewServer(client.NewCore(clientdb.NewStore(log, db)))
+	httpServer := httptest.NewServer(APIMux(server))
+	t.Cleanup(httpServer.Close)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			path := server.URL + fmt.Sprintf("/clientes/%s/transacoes", tt.id)
+			path := httpServer.URL + fmt.Sprintf("/clientes/%s/transacoes", tt.id)
 			data := `{"valor":1000,"tipo":"c","descricao":"descricao"}`
 			contentType := "application/json"
 

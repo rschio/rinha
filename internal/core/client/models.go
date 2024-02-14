@@ -26,3 +26,10 @@ type Transaction struct {
 	Description string
 	Date        time.Time
 }
+
+type Billing struct {
+	Balance          int
+	Limit            int
+	Date             time.Time
+	LastTransactions []Transaction
+}

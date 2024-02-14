@@ -3,16 +3,27 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
+
+	"github.com/rschio/rinha/internal/core/client"
 )
 
-func APIMux() *http.ServeMux {
+func APIMux(s *Server) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /clientes/{id}/transacoes", Transactions)
+	mux.HandleFunc("POST /clientes/{id}/transacoes", s.Transactions)
 	mux.HandleFunc("GET /clientes/{id}/extrato", Billing)
 
 	return mux
+}
+
+type Server struct {
+	Client *client.Core
+}
+
+func NewServer(c *client.Core) *Server {
+	return &Server{Client: c}
 }
 
 type TransactionsReq struct {
@@ -26,10 +37,24 @@ type TransactionsResp struct {
 	Balance int `json:"saldo"`
 }
 
-func Transactions(w http.ResponseWriter, r *http.Request) {
+func (s *Server) Transactions(w http.ResponseWriter, r *http.Request) {
 	serveJSON(w, r,
 		func(ctx context.Context, id int, req TransactionsReq) (TransactionsResp, error) {
-			return TransactionsResp{Limit: 1000, Balance: 1000}, nil
+			nt := client.NewTransaction{
+				Value:       req.Value,
+				Type:        req.Type,
+				Description: req.Description,
+			}
+
+			c, err := s.Client.AddTransaction(ctx, id, nt)
+			if err != nil {
+				return TransactionsResp{}, err
+			}
+
+			return TransactionsResp{
+				Limit:   c.Limit,
+				Balance: c.Balance,
+			}, nil
 		},
 	)
 }
@@ -70,9 +95,23 @@ func serveJSON[Req any, Resp any](
 
 	resp, err := fn(r.Context(), id, req)
 	if err != nil {
-		// TODO: change to represent the correct errors.
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+		switch {
+		case errors.Is(err, client.ErrNotFound):
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+
+		case errors.Is(err, client.ErrInvalidArgument):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+
+		case errors.Is(err, client.ErrTransactionDenied):
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+
+		default:
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	bs, err := json.Marshal(resp)

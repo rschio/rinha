@@ -185,15 +185,7 @@ func NamedQuerySlice[T any](ctx context.Context, log *slog.Logger, db DB, query 
 	}
 	defer rows.Close()
 
-	out, err := pgx.CollectRows(rows, pgx.RowToStructByName[T])
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrDBNotFound
-		}
-		return nil, err
-	}
-
-	return out, nil
+	return pgx.CollectRows(rows, pgx.RowToStructByName[T])
 }
 
 func NamedQueryStruct[T any](ctx context.Context, log *slog.Logger, db DB, query string, data any) (T, error) {

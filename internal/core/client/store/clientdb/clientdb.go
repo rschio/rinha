@@ -3,6 +3,7 @@ package clientdb
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/rschio/rinha/internal/core/client"
@@ -46,12 +47,12 @@ func (s *Store) QueryByID(ctx context.Context, clientID int) (client.Client, err
 	SELECT
 		c.id,
 		c.credit_limit,
-		COALESCE(-SUM(t.value), 0) as balance
+		COALESCE(SUM(t.value), 0) as balance
 	FROM
 		clients AS c
 		LEFT JOIN transactions AS t ON c.id = t.client_id
 	WHERE
-		c.id = 1
+		c.id = @id
 	GROUP BY
 		c.id`
 
@@ -66,21 +67,56 @@ func (s *Store) QueryByID(ctx context.Context, clientID int) (client.Client, err
 	return toClient(c), nil
 }
 
-func (s *Store) AddTransaction(ctx context.Context, t client.Transaction) error {
-	return nil
-}
-
-// ----------------------------------------------------------------------
-type dbClient struct {
-	ID      int `db:"id"`
-	Limit   int `db:"credit_limit"`
-	Balance int `db:"balance"`
-}
-
-func toClient(c dbClient) client.Client {
-	return client.Client{
-		ID:      c.ID,
-		Limit:   c.Limit,
-		Balance: c.Balance,
+func (s *Store) QueryTransactions(ctx context.Context, clientID, pageNumber, rowsPerPage int) ([]client.Transaction, error) {
+	data := struct {
+		ID          int `db:"id"`
+		Offset      int `db:"offset"`
+		RowsPerPage int `db:"rows_per_page"`
+	}{
+		ID:          clientID,
+		Offset:      (pageNumber - 1) * rowsPerPage,
+		RowsPerPage: rowsPerPage,
 	}
+
+	const q = `
+	SELECT
+		*
+	FROM
+		transactions t
+	WHERE
+		t.client_id = @id
+	ORDER BY
+		date_created DESC
+	OFFSET @offset ROWS FETCH NEXT @rows_per_page ROWS ONLY`
+
+	dbTs, err := db.NamedQuerySlice[dbTransaction](ctx, s.log, s.db, q, data)
+	if err != nil {
+		return nil, err
+	}
+
+	return toTransactions(dbTs), nil
+}
+
+func (s *Store) AddTransaction(ctx context.Context, t client.Transaction) error {
+	const q = `
+	INSERT INTO transactions(
+		id,
+		client_id,
+		value,
+		type,
+		description,
+		date_created)
+	VALUES (
+		@id,
+		@client_id,
+		@value,
+		@type,
+		@description,
+		@date_created);`
+
+	if err := db.NamedExec(ctx, s.log, s.db, q, toDBTransaction(t)); err != nil {
+		return fmt.Errorf("failed to add transaction: %w", err)
+	}
+
+	return nil
 }
