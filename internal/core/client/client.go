@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	goredislib "github.com/redis/go-redis/v9"
 	"github.com/rschio/rinha/internal/web"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Set of errors for client API.
@@ -108,9 +109,14 @@ func (c *Core) AddTransaction(ctx context.Context, clientID int, nt NewTransacti
 		return Client{}, err
 	}
 
+	var span trace.Span
+	ctx, span = web.AddSpan(ctx, "internal.core.Client.AddTransactions.WaitingMutex")
+
 	mu := c.rs.NewMutex(strconv.Itoa(clientID))
 	mu.Lock()
 	defer mu.Unlock()
+
+	span.End()
 
 	client, err := c.store.QueryByID(ctx, clientID)
 	if err != nil {
