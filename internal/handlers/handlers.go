@@ -7,16 +7,35 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/rschio/rinha/internal/core/client"
+	"github.com/rschio/rinha/internal/web"
+	"go.opentelemetry.io/otel/trace"
 )
 
-func APIMux(s *Server) *http.ServeMux {
+func APIMux(s *Server, tracer trace.Tracer) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /clientes/{id}/transacoes", s.Transactions)
-	mux.HandleFunc("GET /clientes/{id}/extrato", s.Billing)
+	mux.Handle("POST /clientes/{id}/transacoes", middlewareWeb(tracer, s.Transactions))
+	mux.Handle("GET /clientes/{id}/extrato", middlewareWeb(tracer, s.Billing))
 
 	return mux
+}
+
+func middlewareWeb(tracer trace.Tracer, h http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := tracer.Start(r.Context(), "web")
+
+		v := web.Values{
+			TraceID: span.SpanContext().TraceID().String(),
+			Tracer:  tracer,
+			Now:     time.Now().UTC(),
+		}
+		ctx = web.SetValues(ctx, &v)
+		r = r.WithContext(ctx)
+
+		h(w, r)
+	})
 }
 
 type Server struct {

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,13 +12,14 @@ import (
 	"time"
 
 	"github.com/ardanlabs/conf/v3"
-	_ "github.com/jackc/pgx/v5/stdlib" // Postgres stdlib driver, used for migrations.
 	"github.com/rschio/rinha/internal/core/client"
 	"github.com/rschio/rinha/internal/core/client/store/clientdb"
-	"github.com/rschio/rinha/internal/data/dbschema"
 	db "github.com/rschio/rinha/internal/data/dbsql/pgx"
 	"github.com/rschio/rinha/internal/handlers"
 	"github.com/rschio/rinha/internal/logger"
+	"github.com/rschio/rinha/internal/trace"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 var build = "develop"
@@ -53,6 +53,12 @@ func run(log *slog.Logger) error {
 			Name       string `conf:"default:postgres"`
 			DisableTLS bool   `conf:"default:true"`
 		}
+		OTEL struct {
+			Endpoint            string  `conf:"default:otel-collector:4317"`
+			ServiceName         string  `conf:"default:Rinha"`
+			TraceSampleFraction float64 `conf:"default:1.0"`
+			EnableTrace         bool    `conf:"default:true"`
+		}
 	}{
 		Version: conf.Version{
 			Build: build,
@@ -82,6 +88,25 @@ func run(log *slog.Logger) error {
 	log.Info("startup", "config", out)
 
 	// =========================================================================
+	// Trace support
+
+	tracerProvider, err := trace.NewProvider(ctx, trace.Config{
+		Env:            cfg.Env,
+		Endpoint:       cfg.OTEL.Endpoint,
+		Service:        cfg.OTEL.ServiceName,
+		SampleFraction: cfg.OTEL.TraceSampleFraction,
+		DiscardTraces:  !cfg.OTEL.EnableTrace,
+	})
+	if err != nil {
+		return fmt.Errorf("constructing tracer provider: %w", err)
+	}
+	defer tracerProvider.Shutdown(ctx)
+	otel.SetTracerProvider(tracerProvider)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+
+	tracer := otel.GetTracerProvider().Tracer("service")
+
+	// =========================================================================
 	// Database Support
 
 	log.Info("startup", "status", "initializing database support", "host", cfg.DB.Host)
@@ -108,18 +133,6 @@ func run(log *slog.Logger) error {
 		return fmt.Errorf("database not health: %w", err)
 	}
 
-	// TODO: remove migration from here
-	stdDB, err := sql.Open("pgx", db.ConnString(dbCfg))
-	if err != nil {
-		return fmt.Errorf("failed to open DB for migration: %w", err)
-	}
-
-	if err := dbschema.Migrate(stdDB); err != nil {
-		stdDB.Close()
-		return fmt.Errorf("migrating error: %w", err)
-	}
-	stdDB.Close()
-
 	// =========================================================================
 	// Start API Service
 
@@ -130,7 +143,7 @@ func run(log *slog.Logger) error {
 
 	core := client.NewCore(clientdb.NewStore(log, database))
 	srv := handlers.NewServer(log, core)
-	mux := handlers.APIMux(srv)
+	mux := handlers.APIMux(srv, tracer)
 
 	api := http.Server{
 		Addr:     fmt.Sprintf(":%d", cfg.Web.Port),
