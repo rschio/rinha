@@ -59,7 +59,7 @@ func TestConsistency(t *testing.T) {
 
 	core := client.NewCore(clientdb.NewStore(log, database))
 
-	n := 50
+	n := 1000
 	nts := make([]testNT, n)
 	for i := 0; i < n; i++ {
 		nts[i] = randomNewTransaction()
@@ -91,7 +91,11 @@ func TestConsistency(t *testing.T) {
 				t.Fatalf("billing error: %v", err)
 			}
 			if ret.billing.Balance < -ret.billing.Limit {
-				t.Errorf("insconsistency found on Billing: %+v", ret.billing)
+				b, err := core.Billing(ctx, tt.clientID)
+				if err != nil {
+					t.Fatalf("retrying billing: %v", err)
+				}
+				t.Errorf("insconsistency found on Billing:\n%+v\nbilling retried:\n%v\n", ret.billing, b)
 			}
 		})
 	}
