@@ -8,17 +8,23 @@ import (
 	"strings"
 	"testing"
 
+	goredislib "github.com/redis/go-redis/v9"
 	"github.com/rschio/rinha/internal/core/client"
 	"github.com/rschio/rinha/internal/core/client/store/clientdb"
 	"github.com/rschio/rinha/internal/data/dbtest"
+	"go.opentelemetry.io/otel"
 )
 
 func TestTransactions(t *testing.T) {
 	log, db, teardown := dbtest.NewUnit(t, dbtest.WithMigrations())
 	t.Cleanup(teardown)
 
-	server := NewServer(client.NewCore(clientdb.NewStore(log, db)))
-	httpServer := httptest.NewServer(APIMux(server))
+	// TODO: improve
+	redis := goredislib.NewClient(&goredislib.Options{
+		Addr: "localhost:6379",
+	})
+	server := NewServer(log, client.NewCore(clientdb.NewStore(log, db), redis))
+	httpServer := httptest.NewServer(APIMux(server, otel.GetTracerProvider().Tracer("")))
 	t.Cleanup(httpServer.Close)
 
 	id := 1
@@ -61,8 +67,12 @@ func TestTransactionsID(t *testing.T) {
 	log, db, teardown := dbtest.NewUnit(t, dbtest.WithMigrations())
 	t.Cleanup(teardown)
 
-	server := NewServer(client.NewCore(clientdb.NewStore(log, db)))
-	httpServer := httptest.NewServer(APIMux(server))
+	// TODO: improve
+	redis := goredislib.NewClient(&goredislib.Options{
+		Addr: "localhost:6379",
+	})
+	server := NewServer(log, client.NewCore(clientdb.NewStore(log, db), redis))
+	httpServer := httptest.NewServer(APIMux(server, otel.GetTracerProvider().Tracer("")))
 	t.Cleanup(httpServer.Close)
 
 	for _, tt := range tests {

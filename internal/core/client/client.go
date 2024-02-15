@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
+	"github.com/go-redsync/redsync/v4"
+	"github.com/go-redsync/redsync/v4/redis/goredis/v9"
 	"github.com/google/uuid"
+	goredislib "github.com/redis/go-redis/v9"
 	"github.com/rschio/rinha/internal/web"
 )
 
@@ -37,10 +41,14 @@ type Store interface {
 // Core deals with client's business logic.
 type Core struct {
 	store Store
+	rs    *redsync.Redsync
 }
 
-func NewCore(s Store) *Core {
-	return &Core{store: s}
+func NewCore(s Store, r *goredislib.Client) *Core {
+	redisPool := goredis.NewPool(r)
+	rs := redsync.New(redisPool)
+
+	return &Core{store: s, rs: rs}
 }
 
 func (c *Core) QueryByID(ctx context.Context, clientID int) (Client, error) {
@@ -100,36 +108,30 @@ func (c *Core) AddTransaction(ctx context.Context, clientID int, nt NewTransacti
 		return Client{}, err
 	}
 
-	var client Client
-	fn := func(tx Store) error {
-		var err error
-		client, err = tx.QueryByID(ctx, clientID)
-		if err != nil {
-			return err
-		}
+	mu := c.rs.NewMutex(strconv.Itoa(clientID))
+	mu.Lock()
+	defer mu.Unlock()
 
-		var newBalance int
-		if t.Type == "c" { // credito.
-			newBalance = client.Balance + t.Value
-		} else { // debito.
-			newBalance = client.Balance - t.Value
-		}
-
-		if newBalance < -client.Limit {
-			return ErrTransactionDenied
-		}
-
-		if err := tx.AddTransaction(ctx, t); err != nil {
-			return fmt.Errorf("failed to add transaction: %w", err)
-		}
-
-		client.Balance = newBalance
-		return nil
-	}
-
-	if err := c.store.ExecUnderTx(ctx, fn); err != nil {
+	client, err := c.store.QueryByID(ctx, clientID)
+	if err != nil {
 		return Client{}, err
 	}
+
+	value := t.Value
+	if t.Type == "d" {
+		value = -value
+	}
+
+	newBalance := client.Balance + value
+	if newBalance < -client.Limit {
+		return Client{}, ErrTransactionDenied
+	}
+
+	if err := c.store.AddTransaction(ctx, t); err != nil {
+		return Client{}, fmt.Errorf("failed to add transaction: %w", err)
+	}
+
+	client.Balance = newBalance
 
 	return client, nil
 }

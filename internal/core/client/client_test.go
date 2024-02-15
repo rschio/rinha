@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	goredislib "github.com/redis/go-redis/v9"
 	"github.com/rschio/rinha/internal/core/client"
 	"github.com/rschio/rinha/internal/core/client/store/clientdb"
 	"github.com/rschio/rinha/internal/data/dbtest"
@@ -18,7 +19,11 @@ func TestAddTransaction(t *testing.T) {
 	log, database, teardown := dbtest.NewUnit(t, dbtest.WithMigrations())
 	t.Cleanup(teardown)
 
-	core := client.NewCore(clientdb.NewStore(log, database))
+	// TODO: improve
+	redis := goredislib.NewClient(&goredislib.Options{
+		Addr: "localhost:6379",
+	})
+	core := client.NewCore(clientdb.NewStore(log, database), redis)
 
 	clientID := 2
 	c, err := core.QueryByID(ctx, clientID)
@@ -57,7 +62,11 @@ func TestConsistency(t *testing.T) {
 	log, database, teardown := dbtest.NewUnit(t, dbtest.WithMigrations())
 	t.Cleanup(teardown)
 
-	core := client.NewCore(clientdb.NewStore(log, database))
+	// TODO: improve
+	redis := goredislib.NewClient(&goredislib.Options{
+		Addr: "localhost:6379",
+	})
+	core := client.NewCore(clientdb.NewStore(log, database), redis)
 
 	n := 1000
 	nts := make([]testNT, n)

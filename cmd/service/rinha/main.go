@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ardanlabs/conf/v3"
+	goredislib "github.com/redis/go-redis/v9"
 	"github.com/rschio/rinha/internal/core/client"
 	"github.com/rschio/rinha/internal/core/client/store/clientdb"
 	db "github.com/rschio/rinha/internal/data/dbsql/pgx"
@@ -52,6 +53,9 @@ func run(log *slog.Logger) error {
 			Host       string `conf:"default:0.0.0.0:5432"` // TODO: change to postgres
 			Name       string `conf:"default:postgres"`
 			DisableTLS bool   `conf:"default:true"`
+		}
+		Redis struct {
+			Host string `conf:"default:0.0.0.0:6379"` // TODO: change to redis.
 		}
 		OTEL struct {
 			Endpoint            string  `conf:"default:otel-collector:4317"`
@@ -134,6 +138,13 @@ func run(log *slog.Logger) error {
 	}
 
 	// =========================================================================
+	// Start Redis
+
+	redis := goredislib.NewClient(&goredislib.Options{
+		Addr: cfg.Redis.Host,
+	})
+
+	// =========================================================================
 	// Start API Service
 
 	log.Info("startup", "status", "initializing RINHA API support")
@@ -141,7 +152,7 @@ func run(log *slog.Logger) error {
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
 
-	core := client.NewCore(clientdb.NewStore(log, database))
+	core := client.NewCore(clientdb.NewStore(log, database), redis)
 	srv := handlers.NewServer(log, core)
 	mux := handlers.APIMux(srv, tracer)
 
