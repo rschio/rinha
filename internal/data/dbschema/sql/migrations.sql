@@ -2,7 +2,7 @@
 -- Description: Create table clients.
 CREATE TABLE IF NOT EXISTS clients(
 	id INT PRIMARY KEY,
-	credit_limit INT NOT NULL,
+	credit_limit BIGINT NOT NULL,
 	date_created TIMESTAMP NOT NULL,
 	date_updated TIMESTAMP NOT NULL
 );
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS clients(
 CREATE TABLE IF NOT EXISTS transactions(
 	id TEXT PRIMARY KEY,
 	client_id INT REFERENCES clients(id),
-	value INT NOT NULL,
+	value BIGINT NOT NULL,
 	type VARCHAR(1) NOT NULL,
 	description VARCHAR(10) NOT NULL,
 	date_created TIMESTAMP NOT NULL
