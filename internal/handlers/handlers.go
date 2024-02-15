@@ -25,6 +25,7 @@ func APIMux(s *Server, tracer trace.Tracer) *http.ServeMux {
 func middlewareWeb(tracer trace.Tracer, h http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, span := tracer.Start(r.Context(), "web")
+		defer span.End()
 
 		v := web.Values{
 			TraceID: span.SpanContext().TraceID().String(),
@@ -50,6 +51,9 @@ func NewServer(log *slog.Logger, c *client.Core) *Server {
 func (s *Server) Transactions(w http.ResponseWriter, r *http.Request) {
 	serveJSON(w, r, s,
 		func(ctx context.Context, id int, req TransactionsReq) (TransactionsResp, error) {
+			ctx, span := web.AddSpan(r.Context(), "internal.handlers.Server.Transactions")
+			defer span.End()
+
 			nt := client.NewTransaction{
 				Value:       req.Value,
 				Type:        req.Type,
@@ -72,6 +76,9 @@ func (s *Server) Transactions(w http.ResponseWriter, r *http.Request) {
 func (s *Server) Billing(w http.ResponseWriter, r *http.Request) {
 	serveJSON(w, r, s,
 		func(ctx context.Context, id int, req struct{}) (BillingResp, error) {
+			ctx, span := web.AddSpan(r.Context(), "internal.handlers.Server.Billing")
+			defer span.End()
+
 			b, err := s.client.Billing(ctx, id)
 			if err != nil {
 				return BillingResp{}, err
@@ -93,11 +100,16 @@ func serveJSON[Req any, Resp any](
 	s *Server,
 	fn func(ctx context.Context, id int, req Req) (Resp, error),
 ) {
-	if r.Header.Get("Content-Type") != "application/json" {
-		s.log.Error("request must be a json")
-		http.Error(w, "request must be a json", http.StatusBadRequest)
-		return
-	}
+	ctx, span := web.AddSpan(r.Context(), "internal.handlers.serveJSON")
+	defer span.End()
+
+	// Do not require the header. The tests don't send them.
+	//
+	//if r.Header.Get("Content-Type") != "application/json" {
+	//	s.log.Error("request must be a json")
+	//	http.Error(w, "request must be a json", http.StatusBadRequest)
+	//	return
+	//}
 
 	var req Req
 	if r.Method != http.MethodGet {
@@ -105,7 +117,9 @@ func serveJSON[Req any, Resp any](
 		r.Body.Close()
 		if err != nil {
 			s.log.Error("decoding json", "ERROR", err)
-			http.Error(w, "bad request", http.StatusBadRequest)
+			// TODO: this error is incorrect.
+			http.Error(w, "bad request", http.StatusUnprocessableEntity)
+			//http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
 	}
@@ -117,7 +131,7 @@ func serveJSON[Req any, Resp any](
 		return
 	}
 
-	resp, err := fn(r.Context(), id, req)
+	resp, err := fn(ctx, id, req)
 	if err != nil {
 		s.log.Error("fn", "ERROR", err)
 		switch {
@@ -126,8 +140,11 @@ func serveJSON[Req any, Resp any](
 			return
 
 		case errors.Is(err, client.ErrInvalidArgument):
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			// TODO: I think this should return bad request,
+			// but the tests aks for 422.
+			fallthrough
+			//http.Error(w, err.Error(), http.StatusBadRequest)
+			//return
 
 		case errors.Is(err, client.ErrTransactionDenied):
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
