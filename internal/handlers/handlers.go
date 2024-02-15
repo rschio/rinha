@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -13,32 +14,22 @@ import (
 func APIMux(s *Server) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /clientes/{id}/transacoes", s.Transactions)
-	mux.HandleFunc("GET /clientes/{id}/extrato", Billing)
+	mux.HandleFunc("GET /clientes/{id}/extrato", s.Billing)
 
 	return mux
 }
 
 type Server struct {
-	Client *client.Core
+	log    *slog.Logger
+	client *client.Core
 }
 
-func NewServer(c *client.Core) *Server {
-	return &Server{Client: c}
-}
-
-type TransactionsReq struct {
-	Value       int    `json:"valor"`
-	Type        string `json:"tipo"`
-	Description string `json:"descricao"`
-}
-
-type TransactionsResp struct {
-	Limit   int `json:"limite"`
-	Balance int `json:"saldo"`
+func NewServer(log *slog.Logger, c *client.Core) *Server {
+	return &Server{log: log, client: c}
 }
 
 func (s *Server) Transactions(w http.ResponseWriter, r *http.Request) {
-	serveJSON(w, r,
+	serveJSON(w, r, s,
 		func(ctx context.Context, id int, req TransactionsReq) (TransactionsResp, error) {
 			nt := client.NewTransaction{
 				Value:       req.Value,
@@ -46,7 +37,7 @@ func (s *Server) Transactions(w http.ResponseWriter, r *http.Request) {
 				Description: req.Description,
 			}
 
-			c, err := s.Client.AddTransaction(ctx, id, nt)
+			c, err := s.client.AddTransaction(ctx, id, nt)
 			if err != nil {
 				return TransactionsResp{}, err
 			}
@@ -59,8 +50,17 @@ func (s *Server) Transactions(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-func Billing(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "not implemented", http.StatusInternalServerError)
+func (s *Server) Billing(w http.ResponseWriter, r *http.Request) {
+	serveJSON(w, r, s,
+		func(ctx context.Context, id int, req struct{}) (BillingResp, error) {
+			b, err := s.client.Billing(ctx, id)
+			if err != nil {
+				return BillingResp{}, err
+			}
+
+			return toBillingResp(b), nil
+		},
+	)
 }
 
 func getID(r *http.Request) (int, error) {
@@ -69,32 +69,38 @@ func getID(r *http.Request) (int, error) {
 }
 
 func serveJSON[Req any, Resp any](
-	//	s *Server,
 	w http.ResponseWriter,
 	r *http.Request,
+	s *Server,
 	fn func(ctx context.Context, id int, req Req) (Resp, error),
 ) {
 	if r.Header.Get("Content-Type") != "application/json" {
+		s.log.Error("request must be a json")
 		http.Error(w, "request must be a json", http.StatusBadRequest)
 		return
 	}
 
 	var req Req
-	err := json.NewDecoder(r.Body).Decode(&req)
-	r.Body.Close()
-	if err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
+	if r.Method != http.MethodGet {
+		err := json.NewDecoder(r.Body).Decode(&req)
+		r.Body.Close()
+		if err != nil {
+			s.log.Error("decoding json", "ERROR", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
 	}
 
 	id, err := getID(r)
 	if err != nil {
+		s.log.Error("getID", "ERROR", err)
 		http.Error(w, "invalid id", http.StatusNotFound)
 		return
 	}
 
 	resp, err := fn(r.Context(), id, req)
 	if err != nil {
+		s.log.Error("fn", "ERROR", err)
 		switch {
 		case errors.Is(err, client.ErrNotFound):
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -116,7 +122,8 @@ func serveJSON[Req any, Resp any](
 
 	bs, err := json.Marshal(resp)
 	if err != nil {
-		http.Error(w, "failed encode response", http.StatusInternalServerError)
+		s.log.Error("failed to encode response", "ERROR", err)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
 	}
 
