@@ -57,9 +57,10 @@ func TestConsistency(t *testing.T) {
 	log, database, teardown := dbtest.NewUnit(t, dbtest.WithMigrations())
 	t.Cleanup(teardown)
 
-	core := client.NewCore(clientdb.NewStore(log, database))
+	store := clientdb.NewStore(log, database)
+	core := client.NewCore(store)
 
-	n := 200
+	n := 1000
 	nts := make([]testNT, n)
 	for i := 0; i < n; i++ {
 		nts[i] = randomNewTransaction()
@@ -99,6 +100,37 @@ func TestConsistency(t *testing.T) {
 			}
 		})
 	}
+
+	clientIDs := []int{1, 2, 3, 4, 5}
+	for _, clientID := range clientIDs {
+		b, err := core.Billing(ctx, clientID)
+		if err != nil {
+			t.Fatalf("failed to get billing from clientID[%d]: %v", clientID, err)
+		}
+
+		ts, err := store.QueryTransactions(ctx, clientID, 1, n)
+		if err != nil {
+			t.Fatalf("failed to get tranasctions from clientID[%d]: %v", clientID, err)
+		}
+		total := sumTransactions(ts)
+
+		if b.Balance != total {
+			t.Fatalf("inconsistency between balance and trasactions: balance[%d]\ncalculated total[%d]\nbilling[%+v]\ntransactions[%+v]", b.Balance, total, b, ts)
+		}
+	}
+
+}
+
+func sumTransactions(ts []client.Transaction) int {
+	total := 0
+	for _, t := range ts {
+		v := t.Value
+		if t.Type == "d" {
+			v = -v
+		}
+		total += v
+	}
+	return total
 }
 
 type billingErr struct {
