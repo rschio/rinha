@@ -4,15 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
-	"github.com/go-redsync/redsync/v4"
-	"github.com/go-redsync/redsync/v4/redis/goredis/v9"
 	"github.com/google/uuid"
-	goredislib "github.com/redis/go-redis/v9"
 	"github.com/rschio/rinha/internal/web"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // Set of errors for client API.
@@ -37,19 +32,17 @@ type Store interface {
 
 	// AddTransaction add a transaction associated with a client.
 	AddTransaction(ctx context.Context, t Transaction) error
+
+	UpdateClientBalance(ctx context.Context, clientID, balance int) (Client, error)
 }
 
 // Core deals with client's business logic.
 type Core struct {
 	store Store
-	rs    *redsync.Redsync
 }
 
-func NewCore(s Store, r *goredislib.Client) *Core {
-	redisPool := goredis.NewPool(r)
-	rs := redsync.New(redisPool)
-
-	return &Core{store: s, rs: rs}
+func NewCore(s Store) *Core {
+	return &Core{store: s}
 }
 
 func (c *Core) QueryByID(ctx context.Context, clientID int) (Client, error) {
@@ -109,35 +102,44 @@ func (c *Core) AddTransaction(ctx context.Context, clientID int, nt NewTransacti
 		return Client{}, err
 	}
 
-	var span trace.Span
-	ctx, span = web.AddSpan(ctx, "internal.core.Client.AddTransactions.WaitingMutex")
+	var client Client
+	fn := func(tx Store) error {
+		var err error
+		client, err = tx.QueryByID(ctx, clientID)
+		if err != nil {
+			return err
+		}
 
-	mu := c.rs.NewMutex(strconv.Itoa(clientID))
-	mu.Lock()
-	defer mu.Unlock()
+		value := t.Value
+		if t.Type == "d" {
+			value = -value
+		}
 
-	span.End()
+		newBalance := client.Balance + value
+		if newBalance < -client.Limit {
+			return ErrTransactionDenied
+		}
 
-	client, err := c.store.QueryByID(ctx, clientID)
-	if err != nil {
+		if err := tx.AddTransaction(ctx, t); err != nil {
+			return fmt.Errorf("failed to add transaction: %w", err)
+		}
+
+		client, err = tx.UpdateClientBalance(ctx, client.ID, newBalance)
+		if err != nil {
+			return fmt.Errorf("failed to update balance: %w", err)
+		}
+
+		// TODO: remove this.
+		if client.Balance < -client.Limit {
+			return ErrTransactionDenied
+		}
+
+		return nil
+	}
+
+	if err := c.store.ExecUnderTx(ctx, fn); err != nil {
 		return Client{}, err
 	}
-
-	value := t.Value
-	if t.Type == "d" {
-		value = -value
-	}
-
-	newBalance := client.Balance + value
-	if newBalance < -client.Limit {
-		return Client{}, ErrTransactionDenied
-	}
-
-	if err := c.store.AddTransaction(ctx, t); err != nil {
-		return Client{}, fmt.Errorf("failed to add transaction: %w", err)
-	}
-
-	client.Balance = newBalance
 
 	return client, nil
 }

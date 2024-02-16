@@ -47,14 +47,12 @@ func (s *Store) QueryByID(ctx context.Context, clientID int) (client.Client, err
 	SELECT
 		c.id,
 		c.credit_limit,
-		COALESCE(SUM(t.value), 0) as balance
+		c.balance
 	FROM
 		clients AS c
-		LEFT JOIN transactions AS t ON c.id = t.client_id
 	WHERE
 		c.id = @id
-	GROUP BY
-		c.id`
+	FOR UPDATE`
 
 	c, err := db.NamedQueryStruct[dbClient](ctx, s.log, s.db, q, data)
 	if err != nil {
@@ -95,6 +93,33 @@ func (s *Store) QueryTransactions(ctx context.Context, clientID, pageNumber, row
 	}
 
 	return toTransactions(dbTs), nil
+}
+
+func (s *Store) UpdateClientBalance(ctx context.Context, clientID, balance int) (client.Client, error) {
+	data := struct {
+		ID      int `db:"id"`
+		Balance int `db:"balance"`
+	}{
+		ID:      clientID,
+		Balance: balance,
+	}
+
+	const q = `	
+	UPDATE
+		clients
+	SET
+		balance = @balance
+	WHERE
+		id = @id
+	RETURNING
+		id, credit_limit, balance`
+
+	c, err := db.NamedQueryStruct[dbClient](ctx, s.log, s.db, q, data)
+	if err != nil {
+		return client.Client{}, err
+	}
+
+	return toClient(c), nil
 }
 
 func (s *Store) AddTransaction(ctx context.Context, t client.Transaction) error {
