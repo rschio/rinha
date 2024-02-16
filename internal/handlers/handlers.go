@@ -49,9 +49,9 @@ func NewServer(log *slog.Logger, c *client.Core) *Server {
 }
 
 func (s *Server) Transactions(w http.ResponseWriter, r *http.Request) {
-	serveJSON(w, r, s,
+	serveJSON(s, w, r,
 		func(ctx context.Context, id int, req TransactionsReq) (TransactionsResp, error) {
-			ctx, span := web.AddSpan(r.Context(), "internal.handlers.Server.Transactions")
+			ctx, span := web.AddSpan(ctx, "internal.handlers.Server.Transactions")
 			defer span.End()
 
 			nt := client.NewTransaction{
@@ -74,9 +74,9 @@ func (s *Server) Transactions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) Billing(w http.ResponseWriter, r *http.Request) {
-	serveJSON(w, r, s,
-		func(ctx context.Context, id int, req struct{}) (BillingResp, error) {
-			ctx, span := web.AddSpan(r.Context(), "internal.handlers.Server.Billing")
+	serveJSON(s, w, r,
+		func(ctx context.Context, id int, _ struct{}) (BillingResp, error) {
+			ctx, span := web.AddSpan(ctx, "internal.handlers.Server.Billing")
 			defer span.End()
 
 			b, err := s.client.Billing(ctx, id)
@@ -95,24 +95,22 @@ func getID(r *http.Request) (int, error) {
 }
 
 func serveJSON[Req any, Resp any](
+	s *Server,
 	w http.ResponseWriter,
 	r *http.Request,
-	s *Server,
 	fn func(ctx context.Context, id int, req Req) (Resp, error),
 ) {
 	ctx, span := web.AddSpan(r.Context(), "internal.handlers.serveJSON")
 	defer span.End()
 
-	// Do not require the header. The tests don't send them.
-	//
-	//if r.Header.Get("Content-Type") != "application/json" {
-	//	s.log.Error("request must be a json")
-	//	http.Error(w, "request must be a json", http.StatusBadRequest)
-	//	return
-	//}
-
 	var req Req
-	if r.Method != http.MethodGet {
+	if r.Method == http.MethodPost {
+		if r.Header.Get("Content-Type") != "application/json" {
+			s.log.Error("request must be a json")
+			http.Error(w, "request must be a json", http.StatusBadRequest)
+			return
+		}
+
 		err := json.NewDecoder(r.Body).Decode(&req)
 		r.Body.Close()
 		if err != nil {
