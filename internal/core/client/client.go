@@ -62,6 +62,9 @@ func (c *Core) Billing(ctx context.Context, clientID int) (Billing, error) {
 
 	var b Billing
 	fn := func(tx Store) error {
+		ctx, span := web.AddSpan(ctx, "internal.core.client.Core.Billing.Tx.Inside")
+		defer span.End()
+
 		c, err := tx.QueryByID(ctx, clientID)
 		if err != nil {
 			return err
@@ -81,6 +84,9 @@ func (c *Core) Billing(ctx context.Context, clientID int) (Billing, error) {
 
 		return nil
 	}
+
+	ctx, span := web.AddSpan(ctx, "internal.core.client.Core.Billing.Tx")
+	defer span.End()
 
 	if err := c.store.ExecUnderTx(ctx, fn); err != nil {
 		return Billing{}, err
@@ -104,6 +110,9 @@ func (c *Core) AddTransaction(ctx context.Context, clientID int, nt NewTransacti
 
 	var client Client
 	fn := func(tx Store) error {
+		ctx, span := web.AddSpan(ctx, "internal.core.client.Core.AddTransaction.Tx.Inside")
+		defer span.End()
+
 		var err error
 		client, err = tx.QueryByID(ctx, clientID)
 		if err != nil {
@@ -129,13 +138,11 @@ func (c *Core) AddTransaction(ctx context.Context, clientID int, nt NewTransacti
 			return fmt.Errorf("failed to update balance: %w", err)
 		}
 
-		// TODO: remove this.
-		if client.Balance < -client.Limit {
-			return ErrTransactionDenied
-		}
-
 		return nil
 	}
+
+	ctx, span := web.AddSpan(ctx, "internal.core.client.Core.AddTransaction.Tx")
+	defer span.End()
 
 	if err := c.store.ExecUnderTx(ctx, fn); err != nil {
 		return Client{}, err
