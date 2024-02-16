@@ -117,12 +117,6 @@ type DB interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// Exec is a helper function to execute a CUD operation with
-// logging and tracing.
-func Exec(ctx context.Context, log *slog.Logger, db DB, query string) error {
-	return namedExec(ctx, log, db, query, struct{}{})
-}
-
 // NamedExec is a helper function to execute a CUD operation with
 // logging and tracing where field replacement is necessary.
 func NamedExec(ctx context.Context, log *slog.Logger, db DB, query string, data any) error {
