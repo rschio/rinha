@@ -9,7 +9,7 @@ services:
     hostname: api01
     environment:
       - RINHA_DB_HOST=db:5432
-      - RINHA_REDIS_HOST=redis:6379
+      - RINHA_OTEL_ENABLE_TRACE=true
     depends_on:
       - db
 #    deploy:
@@ -37,13 +37,6 @@ services:
 #          cpus: "0.17"
 #          memory: "10MB"
   
-  redis:
-    image: bitnami/redis:latest
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
-    ports:
-      - "6379:6379"
-
   db:
     image: postgres:16
     hostname: db
