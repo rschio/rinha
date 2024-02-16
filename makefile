@@ -8,12 +8,26 @@ build:
 		--image-label org.opencontainers.image.version=$(VERSION) \
 		--image-label org.opencontainers.image.source=$(shell git remote get-url origin) \
 		--image-label org.opencontainers.image.revision=$(shell git rev-parse HEAD) \
-		./cmd/service/rinha
+		./cmd/rinha
+
+build-prod:
+	GOFLAGS="-ldflags=-X=main.build=$(VERSION)" \
+	ko build -t $(VERSION) --base-import-paths \
+		--image-label org.opencontainers.image.version=$(VERSION) \
+		--image-label org.opencontainers.image.source=$(shell git remote get-url origin) \
+		--image-label org.opencontainers.image.revision=$(shell git rev-parse HEAD) \
+		./cmd/rinha
 
 up:
-	docker compose -f zarf/docker-compose.yml up -d
+	docker compose -f zarf/docker-compose.dev.yml up -d
 
 down:
+	docker compose -f zarf/docker-compose.dev.yml down
+
+up-prod:
+	docker compose -f zarf/docker-compose.yml up -d
+
+down-prod:
 	docker compose -f zarf/docker-compose.yml down
 
 test:

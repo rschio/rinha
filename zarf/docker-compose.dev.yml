@@ -5,12 +5,11 @@ services:
     # Lembre-se de que seu serviço HTTP deve estar hospedado num repositório
     # publicamente acessível! Ex.: hub.docker.com
     # TODO: Change to a remote image.
-    image: rschio/rinha:v0.0.0
+    image: ko.local/github.com/rschio/rinha/cmd/service/rinha:v0.0.0
     hostname: api01
     environment:
       - RINHA_DB_HOST=db:5432
-      - RINHA_OTEL_ENABLE_TRACE=false
-      - RINHA_OTEL_TRACE_SAMPLE_FRACTION=0
+      - RINHA_OTEL_ENABLE_TRACE=true
     depends_on:
       - db
     deploy:
@@ -54,6 +53,21 @@ services:
         limits:
           cpus: "0.5"
           memory: "200MB"
+
+  # Open Telemetry.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.75.0
+    container_name: otel-collector
+    restart: unless-stopped
+    volumes:
+      - ./configs/collector-config.yaml:/etc/otelcol-contrib/config.yaml
+
+  jaeger:
+    image: bitnami/jaeger:latest
+    container_name: jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686"
 
 networks:
   default:
