@@ -25,7 +25,7 @@ services:
   nginx:
     image: nginx:latest
     volumes:
-      - ./docker/configs/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./configs/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - api01
       - api02
@@ -47,7 +47,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./docker/configs/postgres/script.sql:/docker-entrypoint-initdb.d/script.sql
+      - ./configs/script.sql:/docker-entrypoint-initdb.d/script.sql
     deploy:
       resources:
         limits:
@@ -60,7 +60,7 @@ services:
     container_name: otel-collector
     restart: unless-stopped
     volumes:
-      - ./docker/configs/otel/collector-config.yaml:/etc/otelcol-contrib/config.yaml
+      - ./configs/collector-config.yaml:/etc/otelcol-contrib/config.yaml
 
   jaeger:
     image: bitnami/jaeger:latest
