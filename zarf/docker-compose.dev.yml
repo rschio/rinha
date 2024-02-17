@@ -5,7 +5,7 @@ services:
     # Lembre-se de que seu serviço HTTP deve estar hospedado num repositório
     # publicamente acessível! Ex.: hub.docker.com
     # TODO: Change to a remote image.
-    image: ko.local/github.com/rschio/rinha/cmd/service/rinha:v0.0.0
+    image: rschio/github.com/rschio/rinha/cmd/rinha:v0.0.0
     hostname: api01
     environment:
       - RINHA_DB_HOST=db:5432
@@ -16,7 +16,7 @@ services:
       resources:
         limits:
           cpus: "0.4"
-          memory: "150MB"
+          memory: "100MB"
 
   api02:
     <<: *api 
@@ -52,7 +52,7 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: "200MB"
+          memory: "300MB"
 
   # Open Telemetry.
   otel-collector:
