@@ -46,20 +46,12 @@ func NewCore(s Store) *Core {
 }
 
 func (c *Core) QueryByID(ctx context.Context, clientID int) (Client, error) {
-	if !isValidID(clientID) {
-		return Client{}, ErrNotFound
-	}
-
 	return c.store.QueryByID(ctx, clientID)
 }
 
 // Billing returns info about a client and the 10 most recent transactions of
 // this client.
 func (c *Core) Billing(ctx context.Context, clientID int) (Billing, error) {
-	if !isValidID(clientID) {
-		return Billing{}, ErrNotFound
-	}
-
 	var b Billing
 	fn := func(tx Store) error {
 		ctx, span := web.AddSpan(ctx, "internal.core.client.Core.Billing.Tx.Inside")
@@ -155,7 +147,7 @@ func (t Transaction) validate() error {
 	switch {
 	case t.ID.Variant() == uuid.Invalid:
 		return ErrInternal
-	case !isValidID(t.ClientID):
+	case t.ClientID < 1:
 		return ErrNotFound
 	case t.Value < 0:
 		return ErrInvalidArgument
@@ -166,11 +158,4 @@ func (t Transaction) validate() error {
 	}
 
 	return nil
-}
-
-func isValidID(id int) bool {
-	if id < 1 || id > 5 {
-		return false
-	}
-	return true
 }
