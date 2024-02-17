@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/rschio/rinha/internal/core/client"
 	db "github.com/rschio/rinha/internal/data/dbsql/pgx"
+	"github.com/rschio/rinha/internal/web"
 )
 
 type Store struct {
@@ -97,18 +99,21 @@ func (s *Store) QueryTransactions(ctx context.Context, clientID, pageNumber, row
 
 func (s *Store) UpdateClientBalance(ctx context.Context, clientID, balance int) (client.Client, error) {
 	data := struct {
-		ID      int `db:"id"`
-		Balance int `db:"balance"`
+		ID          int       `db:"id"`
+		Balance     int       `db:"balance"`
+		DateUpdated time.Time `db:"date_updated"`
 	}{
-		ID:      clientID,
-		Balance: balance,
+		ID:          clientID,
+		Balance:     balance,
+		DateUpdated: web.GetTime(ctx).Round(time.Microsecond),
 	}
 
 	const q = `	
 	UPDATE
 		clients
 	SET
-		balance = @balance
+		balance = @balance,
+		date_updated = @date_updated
 	WHERE
 		id = @id
 	RETURNING
