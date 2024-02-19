@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-VERSION := v0.0.0
+VERSION := v0.0.1
 
 build:
 	GOFLAGS="-ldflags=-X=main.build=$(VERSION)" \

@@ -2,10 +2,7 @@ version: "3.5"
 
 services:
   api01: &api
-    # Lembre-se de que seu serviço HTTP deve estar hospedado num repositório
-    # publicamente acessível! Ex.: hub.docker.com
-    # TODO: Change to a remote image.
-    image: rschio/github.com/rschio/rinha/cmd/rinha:v0.0.0
+    image: rschio/github.com/rschio/rinha/cmd/rinha:v0.0.1
     hostname: api01
     environment:
       - RINHA_DB_HOST=db:5432

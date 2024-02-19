@@ -71,7 +71,8 @@ func (c *Core) Billing(ctx context.Context, clientID int) (Billing, error) {
 
 		b.Balance = c.Balance
 		b.Limit = c.Limit
-		b.Date = web.GetTime(ctx)
+		//b.Date = web.GetTime(ctx)
+		b.Date = time.Now().UTC().Round(time.Microsecond)
 		b.LastTransactions = transactions
 
 		return nil
@@ -94,7 +95,7 @@ func (c *Core) AddTransaction(ctx context.Context, clientID int, nt NewTransacti
 		Value:       nt.Value,
 		Type:        nt.Type,
 		Description: nt.Description,
-		Date:        web.GetTime(ctx).Round(time.Microsecond),
+		//		Date:        web.GetTime(ctx).Round(time.Microsecond),
 	}
 	if err := t.validate(); err != nil {
 		return Client{}, err
@@ -104,6 +105,11 @@ func (c *Core) AddTransaction(ctx context.Context, clientID int, nt NewTransacti
 	fn := func(tx Store) error {
 		ctx, span := web.AddSpan(ctx, "internal.core.client.Core.AddTransaction.Tx.Inside")
 		defer span.End()
+
+		// Set time only when inside the transaction.
+		// This is necessary to ensure the Date is set when the transaction
+		// is processed, not when it was received.
+		t.Date = time.Now().UTC().Round(time.Microsecond)
 
 		var err error
 		client, err = tx.QueryByID(ctx, clientID)
